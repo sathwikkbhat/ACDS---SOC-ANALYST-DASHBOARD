@@ -87,39 +87,69 @@ function isPrivateIP(ip) {
   return /^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|127\.|169\.254\.)/.test(ip);
 }
 
-// Server-side geolocation proxy
+// IP → city mapping for known synthetic IPs (no backend call needed)
+const SYNTHETIC_IP_GEO = {
+  '185.220.101.45': { lat: 52.5200, lon: 13.4050, city: 'Berlin',    country: 'Germany',     isp: 'Tor Exit Node' },
+  '45.33.32.156':   { lat: 38.6532, lon: -90.3498, city: 'St. Louis', country: 'USA',         isp: 'Linode' },
+  '198.199.85.1':   { lat: 40.7128, lon: -74.0060, city: 'New York',  country: 'USA',         isp: 'DigitalOcean' },
+  '104.131.64.11':  { lat: 37.3861, lon: -122.084, city: 'San Jose',  country: 'USA',         isp: 'DigitalOcean' },
+  '91.108.4.202':   { lat: 55.7558, lon: 37.6173,  city: 'Moscow',    country: 'Russia',      isp: 'Telegram' },
+  '103.21.244.0':   { lat: 1.3521,  lon: 103.8198, city: 'Singapore', country: 'Singapore',   isp: 'Cloudflare' },
+  '162.158.0.1':    { lat: 48.8566, lon: 2.3522,   city: 'Paris',     country: 'France',      isp: 'Cloudflare' },
+  '203.0.113.42':   { lat: 35.6762, lon: 139.6503, city: 'Tokyo',     country: 'Japan',       isp: 'APNIC' },
+  '198.51.100.88':  { lat: 39.9042, lon: 116.4074, city: 'Beijing',   country: 'China',       isp: 'CNNIC' },
+  '5.188.206.14':   { lat: 59.9139, lon: 10.7522,  city: 'Oslo',      country: 'Norway',      isp: 'Serverius' },
+  '77.88.55.66':    { lat: 55.7558, lon: 37.6173,  city: 'Moscow',    country: 'Russia',      isp: 'Yandex' },
+  '185.130.44.108': { lat: 51.5074, lon: -0.1278,  city: 'London',    country: 'UK',          isp: 'LeaseWeb' },
+  '94.102.49.190':  { lat: 52.3702, lon: 4.8952,   city: 'Amsterdam', country: 'Netherlands', isp: 'Bulletproof Hosting' },
+  '89.248.165.30':  { lat: 53.5753, lon: 10.0153,  city: 'Hamburg',   country: 'Germany',     isp: 'Shadowserver' },
+  '45.153.160.2':   { lat: 48.2082, lon: 16.3738,  city: 'Vienna',    country: 'Austria',     isp: 'M247' },
+  '193.106.30.98':  { lat: 50.0880, lon: 14.4208,  city: 'Prague',    country: 'Czechia',     isp: 'Hetzner' },
+  '178.73.215.171': { lat: 59.3293, lon: 18.0686,  city: 'Stockholm', country: 'Sweden',      isp: 'Serverius' },
+};
+
+// Server-side geolocation proxy with synthetic fallback
 const geoCache = {};
+function clearGeoCache() { Object.keys(geoCache).forEach(k => delete geoCache[k]); }
 async function fetchGeo(ip) {
   if (geoCache[ip]) return geoCache[ip];
 
-  // Private/LAN IPs can't be geolocated — default to India (attacker's real location)
+  // Known synthetic IPs — return local geo immediately
+  if (SYNTHETIC_IP_GEO[ip]) {
+    geoCache[ip] = SYNTHETIC_IP_GEO[ip];
+    return geoCache[ip];
+  }
+
+  // Private/LAN IPs can't be geolocated — default to India
   if (isPrivateIP(ip)) {
     const result = { lat: 20.5937, lon: 78.9629, city: 'India', country: 'India', isp: 'Local Network' };
     geoCache[ip] = result;
     return result;
   }
 
+  // Try backend geo endpoint (only when backend is online)
   try {
-    const res = await fetch(`${API}/geo/${ip}`);
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (data && data.lat !== null && data.lon !== null) {
-      const result = {
-        lat: data.lat,
-        lon: data.lon,
-        city: data.city || 'Unknown',
-        country: data.country || 'Unknown',
-        isp: data.isp || ''
-      };
-      geoCache[ip] = result;
-      return result;
+    const res = await fetch(`${API}/geo/${ip}`, { signal: AbortSignal.timeout(2000) });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.lat !== null && data.lon !== null) {
+        const result = { lat: data.lat, lon: data.lon, city: data.city || 'Unknown', country: data.country || 'Unknown', isp: data.isp || '' };
+        geoCache[ip] = result;
+        return result;
+      }
     }
   } catch (_) {}
-  return null;
+
+  // Fallback: pick from PRIVATE_IP_GEO pool deterministically
+  const pool = PRIVATE_IP_GEO;
+  const idx  = ip.split('.').reduce((a, b) => a + parseInt(b), 0) % pool.length;
+  const geo  = pool[idx];
+  geoCache[ip] = geo;
+  return geo;
 }
 
 export default function Blueprints() {
-  const { alerts, stats, resetSystem } = useSocket();
+  const { alerts, stats, resetSystem, backendOnline, startSynthetic, stopSynthetic, syntheticMode: ctxSynMode } = useSocket();
 
   // Animated KPI counters
   const animTotal    = useAnimatedCounter(stats.total        ?? 0);
@@ -201,50 +231,48 @@ export default function Blueprints() {
     }
   }, [globeRef.current]);
 
-  const [analysisMode, setAnalysisMode] = useState('standby'); // 'synthetic', 'live', or 'standby'
+  // analysisMode is derived from context syntheticMode + local live state
+  const [liveModeActive, setLiveModeActive] = useState(false);
+  const analysisMode = ctxSynMode ? 'synthetic' : liveModeActive ? 'live' : 'standby';
   const [transitionMsg, setTransitionMsg] = useState(null);
 
-  // ── Mode Toggles ───────────────────────────────────────────────
-  useEffect(() => {
-    // Check initial state or set it
-    // Wait for the server, skip auto-start initially to let user press it
-  }, []);
-
   const setLiveMode = () => {
-    if (analysisMode === 'live') {
-      fetch(`${API}/monitor/stop`, { method: 'POST' }).catch(() => {});
+    if (liveModeActive) {
+      setLiveModeActive(false);
       resetSystem();
       return;
     }
     setTransitionMsg('Switching to Live Analysis...');
-    fetch(`${API}/monitor/stop`, { method: 'POST' }).catch(() => {});
-    
+    stopSynthetic();
+    if (backendOnline) fetch(`${API}/monitor/start`, { method: 'POST' }).catch(() => {});
     setTimeout(() => {
-      setAnalysisMode('live');
+      setLiveModeActive(true);
       setTransitionMsg(null);
     }, 1000);
   };
 
   const setSyntheticMode = () => {
-    if (analysisMode === 'synthetic') {
-      fetch(`${API}/monitor/stop`, { method: 'POST' }).catch(() => {});
+    if (ctxSynMode) {
+      stopSynthetic();
+      setLiveModeActive(false);
       resetSystem();
       return;
     }
     setTransitionMsg('Initializing High-Speed Data Stream...');
-    fetch(`${API}/monitor/start`, { method: 'POST' }).catch(() => {});
-    
+    setLiveModeActive(false);
+    // Stop any backend monitor
+    if (backendOnline) fetch(`${API}/monitor/stop`, { method: 'POST' }).catch(() => {});
     setTimeout(() => {
-      setAnalysisMode('synthetic');
+      startSynthetic();  // generates 5000 alerts in-browser
       setTransitionMsg(null);
-    }, 1000);
+    }, 800);
   };
 
   const resetMonitor = async () => {
-    await fetch(`${API}/monitor/reset`, { method: 'POST' });
     setMonitorStatus(s => ({ ...s, current_file: 0, progress_pct: 0 }));
-    if (analysisMode === 'synthetic') {
-      await fetch(`${API}/monitor/start`, { method: 'POST' });
+    if (ctxSynMode) { stopSynthetic(); setTimeout(startSynthetic, 200); }
+    else if (backendOnline) {
+      try { await fetch(`${API}/monitor/reset`, { method: 'POST' }); } catch (_) {}
     }
   };
 
