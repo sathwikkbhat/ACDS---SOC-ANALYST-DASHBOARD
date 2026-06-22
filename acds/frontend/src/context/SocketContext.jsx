@@ -17,41 +17,51 @@ export const SocketProvider = ({ children }) => {
     const statInterval = setInterval(fetchStats, 3000);
 
     // WebSocket connect
-    const socket = new WebSocket(`${WS_BASE}/ws/alerts`);
-    
-    socket.onopen = () => console.log("WebSocket Connected");
-    
-    socket.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        
-        if (Array.isArray(data)) {
-          setAlerts((prev) => {
-            const newList = [...data.reverse(), ...prev];
-            if (newList.length > 5000) newList.length = 5000;
-            return newList;
-          });
-          // Dispatch custom event for stats/monitor counts 
-          window.dispatchEvent(new CustomEvent('acds-warp-batch', { detail: data }));
-        } else {
-          if (!data.alert_id) return; // Skip status broadcasts that aren't alerts
+    let socket;
+    try {
+      socket = new WebSocket(`${WS_BASE}/ws/alerts`);
+      
+      socket.onopen = () => console.log("WebSocket Connected");
+      
+      socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
           
-          setAlerts((prev) => {
-            const exists = prev.find(a => a.alert_id === data.alert_id);
-            if (exists) return prev;
-            const newList = [data, ...prev];
-            if (newList.length > 5000) newList.length = 5000;
-            window.dispatchEvent(new CustomEvent('acds-new-alert', { detail: data }));
-            return newList;
-          });
-        }
-      } catch (e) { console.error(e) }
-    };
+          if (Array.isArray(data)) {
+            setAlerts((prev) => {
+              const newList = [...data.reverse(), ...prev];
+              if (newList.length > 5000) newList.length = 5000;
+              return newList;
+            });
+            // Dispatch custom event for stats/monitor counts 
+            window.dispatchEvent(new CustomEvent('acds-warp-batch', { detail: data }));
+          } else {
+            if (!data.alert_id) return; // Skip status broadcasts that aren't alerts
+            
+            setAlerts((prev) => {
+              const exists = prev.find(a => a.alert_id === data.alert_id);
+              if (exists) return prev;
+              const newList = [data, ...prev];
+              if (newList.length > 5000) newList.length = 5000;
+              window.dispatchEvent(new CustomEvent('acds-new-alert', { detail: data }));
+              return newList;
+            });
+          }
+        } catch (e) { console.error(e) }
+      };
 
-    setWs(socket);
+      setWs(socket);
+    } catch (err) {
+      console.error("Failed to establish WebSocket connection:", err);
+    }
+
     return () => {
       clearInterval(statInterval);
-      socket.close();
+      if (socket) {
+        try {
+          socket.close();
+        } catch (e) {}
+      }
     }
   }, []);
 
