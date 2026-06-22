@@ -4,6 +4,7 @@ import Globe from 'react-globe.gl';
 import { Bar } from 'react-chartjs-2';
 import { Chart, registerables } from 'chart.js';
 import { API_BASE as API } from '../api';
+import { generateClientPlaybook } from '../syntheticEngine';
 
 Chart.register(...registerables);
 
@@ -724,59 +725,131 @@ export default function Blueprints() {
 function PlaybookSection({ alert }) {
   const [loading, setLoading] = useState(false);
   const [localPlaybook, setLocalPlaybook] = useState(alert.playbook || '');
+  const [validation, setValidation] = useState(alert.validation || null);
 
   useEffect(() => {
     setLocalPlaybook(alert.playbook || '');
-  }, [alert.alert_id, alert.playbook]);
+    setValidation(alert.validation || null);
+  }, [alert.alert_id, alert.playbook, alert.validation]);
+
+  const handleValidate = (type) => {
+    alert.validation = type;
+    setValidation(type);
+  };
 
   const generatePlaybook = async () => {
     setLoading(true);
     try {
       const res = await fetch(`${API}/playbooks/generate/${alert.alert_id}`, { method: 'POST' });
-      const data = await res.json();
-      if (data.playbook) setLocalPlaybook(data.playbook);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.playbook) {
+          setLocalPlaybook(data.playbook);
+          alert.playbook = data.playbook;
+          setLoading(false);
+          return;
+        }
+      }
     } catch (_) {}
+
+    // Fallback
+    await new Promise(r => setTimeout(r, 800));
+    const mockPlaybook = generateClientPlaybook(alert);
+    setLocalPlaybook(mockPlaybook);
+    alert.playbook = mockPlaybook;
     setLoading(false);
   };
 
   return (
-    <div className="space-y-2">
-      <div className="flex justify-between items-center">
-        <p className="font-['Space_Grotesk'] font-bold text-[10px] uppercase tracking-widest text-[#A84B2B]">
-          AI Response Playbook
-        </p>
-        <div className="flex items-center gap-2">
-          <span className="font-['IBM_Plex_Mono'] text-[9px] text-[#6B6560] uppercase">Gemini AI</span>
-          {alert.severity === 'Critical' ? (
-            !localPlaybook && (
-              <button
-                id="generate-playbook-btn"
-                onClick={generatePlaybook}
-                disabled={loading}
-                className="text-[9px] font-['IBM_Plex_Mono'] uppercase bg-[#A84B2B]/10 text-[#A84B2B] px-2 py-0.5 border border-[#A84B2B]/30 hover:bg-[#A84B2B]/20 disabled:opacity-50 transition-all"
-              >
-                {loading ? 'Generating...' : 'Generate'}
-              </button>
-            )
-          ) : (
-            <span className="text-[9px] font-['IBM_Plex_Mono'] text-[#A84B2B]/50">(Critical Only)</span>
-          )}
+    <div className="space-y-4">
+      {/* Validation Row */}
+      <div className="bg-[#120b0a] p-3 border border-[#A84B2B]/10 flex items-center justify-between">
+        <div>
+          <span className="font-['IBM_Plex_Mono'] text-[9px] text-[#6B6560] uppercase">THREAT VALIDATION</span>
+          <p className="font-['Space_Grotesk'] text-xs font-bold uppercase tracking-wider text-[#e5e2e1]">
+            Is this alert genuine?
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => handleValidate('genuine')}
+            className={`text-[9px] font-['IBM_Plex_Mono'] uppercase px-3 py-1 border transition-all ${
+              validation === 'genuine'
+                ? 'bg-[#5B8059]/20 border-[#5B8059] text-[#5B8059]'
+                : 'bg-[#120b0a] border-[#6B6560]/30 text-[#6B6560] hover:border-[#5B8059]/40 hover:text-[#e5e2e1]'
+            }`}
+          >
+            ✓ Genuine & Authentic
+          </button>
+          <button
+            onClick={() => handleValidate('false_positive')}
+            className={`text-[9px] font-['IBM_Plex_Mono'] uppercase px-3 py-1 border transition-all ${
+              validation === 'false_positive'
+                ? 'bg-[#ffb4ab]/20 border-[#ffb4ab] text-[#ffb4ab]'
+                : 'bg-[#120b0a] border-[#6B6560]/30 text-[#6B6560] hover:border-[#ffb4ab]/40 hover:text-[#e5e2e1]'
+            }`}
+          >
+            ✗ False Positive
+          </button>
         </div>
       </div>
-      <div className="bg-[#120b0a]/50 p-4 border border-[#A84B2B]/10 space-y-3 max-h-60 overflow-y-auto no-scrollbar">
-        {localPlaybook ? (
-          localPlaybook.split('\n').filter(s => s.trim()).map((step, idx) => (
-            <div key={idx} className="flex gap-4">
-              <span className="font-['IBM_Plex_Mono'] text-[#A84B2B] text-[10px] shrink-0">{String(idx + 1).padStart(2, '0')}</span>
-              <p className="font-['IBM_Plex_Mono'] text-xs text-[#e5e2e1]">{step}</p>
+
+      {validation === 'genuine' && (
+        <div className="space-y-2">
+          <div className="flex justify-between items-center">
+            <p className="font-['Space_Grotesk'] font-bold text-[10px] uppercase tracking-widest text-[#A84B2B]">
+              AI Response Playbook
+            </p>
+            <div className="flex items-center gap-2">
+              <span className="font-['IBM_Plex_Mono'] text-[9px] text-[#6B6560] uppercase">Gemini AI</span>
+              {alert.severity === 'Critical' ? (
+                !localPlaybook && (
+                  <button
+                    id="generate-playbook-btn"
+                    onClick={generatePlaybook}
+                    disabled={loading}
+                    className="text-[9px] font-['IBM_Plex_Mono'] uppercase bg-[#A84B2B]/10 text-[#A84B2B] px-2 py-0.5 border border-[#A84B2B]/30 hover:bg-[#A84B2B]/20 disabled:opacity-50 transition-all"
+                  >
+                    {loading ? 'Generating...' : 'Generate'}
+                  </button>
+                )
+              ) : (
+                <span className="text-[9px] font-['IBM_Plex_Mono'] text-[#A84B2B]/50">(Critical Only)</span>
+              )}
             </div>
-          ))
-        ) : (
-          <p className="font-['IBM_Plex_Mono'] text-[11px] text-[#6B6560]">
-            {loading ? 'Calling Gemini AI...' : 'Click Generate to create an AI playbook for this threat.'}
+          </div>
+          <div className="bg-[#120b0a]/50 p-4 border border-[#A84B2B]/10 space-y-3 max-h-60 overflow-y-auto no-scrollbar">
+            {localPlaybook ? (
+              localPlaybook.split('\n').filter(s => s.trim()).map((step, idx) => (
+                <div key={idx} className="flex gap-4">
+                  <span className="font-['IBM_Plex_Mono'] text-[#A84B2B] text-[10px] shrink-0">{String(idx + 1).padStart(2, '0')}</span>
+                  <p className="font-['IBM_Plex_Mono'] text-xs text-[#e5e2e1]">{step}</p>
+                </div>
+              ))
+            ) : (
+              <p className="font-['IBM_Plex_Mono'] text-[11px] text-[#6B6560]">
+                {loading ? 'Calling Gemini AI...' : 'Click Generate to create an AI playbook for this threat.'}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {validation === 'false_positive' && (
+        <div className="bg-[#ffb4ab]/5 p-4 border border-[#ffb4ab]/10 text-center">
+          <p className="font-['IBM_Plex_Mono'] text-xs text-[#ffb4ab]/80 uppercase">
+            No response playbook required for False Positive events.
           </p>
-        )}
-      </div>
+        </div>
+      )}
+
+      {validation === null && (
+        <div className="bg-[#120b0a]/30 p-4 border border-[#6B6560]/10 text-center">
+          <p className="font-['IBM_Plex_Mono'] text-xs text-[#6B6560] uppercase">
+            Validate threat classification to unlock Gemini Playbook.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

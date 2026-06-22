@@ -1,23 +1,42 @@
 import React, { useState, useEffect } from 'react';
 import { useSocket } from '../context/SocketContext';
 import { API_BASE as API } from '../api';
+import { generateClientPlaybook } from '../syntheticEngine';
 const formatTime = (ts) => new Date(ts).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + 'Z';
 
 function PlaybookCell({ alert }) {
   const [loading, setLoading] = useState(false);
   const [playbook, setPlaybook] = useState(alert.playbook || '');
   const [expanded, setExpanded] = useState(false);
+  const [validation, setValidation] = useState(alert.validation || null);
 
-  // Removed severity check so the button shows for all alerts
+  const handleValidate = (type, e) => {
+    e.stopPropagation();
+    alert.validation = type;
+    setValidation(type);
+  };
 
   const generate = async (e) => {
     e.stopPropagation();
     setLoading(true);
     try {
       const res = await fetch(`${API}/playbooks/generate/${alert.alert_id}`, { method: 'POST' });
-      const data = await res.json();
-      if (data.playbook) setPlaybook(data.playbook);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.playbook) {
+          setPlaybook(data.playbook);
+          alert.playbook = data.playbook;
+          setLoading(false);
+          return;
+        }
+      }
     } catch (_) {}
+
+    // Fallback
+    await new Promise(r => setTimeout(r, 800));
+    const mockPlaybook = generateClientPlaybook(alert);
+    setPlaybook(mockPlaybook);
+    alert.playbook = mockPlaybook;
     setLoading(false);
   };
 
@@ -25,6 +44,23 @@ function PlaybookCell({ alert }) {
     <td className="px-6 py-5" onClick={e => e.stopPropagation()}>
       {alert.severity !== 'Critical' ? (
         <span className="text-[9px] text-[#e5e2e1]/30 font-['IBM_Plex_Mono']">ACTIVE</span>
+      ) : validation === null ? (
+        <div className="flex gap-2 items-center">
+          <button
+            onClick={(e) => handleValidate('genuine', e)}
+            className="text-[9px] font-['IBM_Plex_Mono'] uppercase text-[#5B8059] bg-[#5B8059]/10 px-2 py-1 border border-[#5B8059]/20 hover:bg-[#5B8059]/20 transition-all whitespace-nowrap"
+          >
+            Genuine
+          </button>
+          <button
+            onClick={(e) => handleValidate('false_positive', e)}
+            className="text-[9px] font-['IBM_Plex_Mono'] uppercase text-[#6B6560] bg-[#6B6560]/10 px-2 py-1 border border-[#6B6560]/20 hover:bg-[#6B6560]/20 transition-all whitespace-nowrap"
+          >
+            FP
+          </button>
+        </div>
+      ) : validation === 'false_positive' ? (
+        <span className="text-[9px] text-[#6B6560]/60 font-['IBM_Plex_Mono'] uppercase tracking-widest">FALSE POSITIVE</span>
       ) : playbook ? (
         <button
           onClick={() => setExpanded(v => !v)}

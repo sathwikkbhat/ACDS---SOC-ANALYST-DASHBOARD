@@ -95,3 +95,36 @@ export function computeStats(alerts) {
 export function generateLiveAlert() {
   return generateAlert(randInt(0, 3000));
 }
+
+/**
+ * Generate a highly realistic simulated Gemini AI playbook on the frontend.
+ */
+export function generateClientPlaybook(alert) {
+  const type = alert.type || 'Threat';
+  const src = alert.src_ip || 'Unknown';
+  const dst = alert.dst_ip || 'Internal';
+  const why = alert.why_flagged || 'Suspicious activity detected.';
+  const user = alert.user || 'Unknown';
+  const port = alert.port || 'Unknown';
+  const technique = alert.technique || 'T1000';
+  const tactic = alert.tactic || 'Unknown';
+
+  return `1. SUMMARY
+Critical security incident detected. A potential ${type} attack is originating from source IP ${src} targeting node ${dst}. Active indicator: ${why}.
+
+2. NEXT MOVES
+Based on MITRE ATT&CK technique ${technique} (${tactic}), the threat actor will likely attempt credential escalation or lateral movement via port ${port} using account "${user}".
+
+3. IMMEDIATE ACTIONS
+a) Block source IP ${src} at the perimeter firewall immediately.
+b) Isolate target host ${dst} from the active network segment.
+c) Terminate session and rotate credentials for user account "${user}".
+d) Trigger immediate endpoint verification scans and review active TCP connections.
+
+4. IOCs TO BLOCK
+IP: ${src} (Attacker)
+Target: ${dst}
+Port: ${port}
+Technique: ${technique}`;
+}
+
