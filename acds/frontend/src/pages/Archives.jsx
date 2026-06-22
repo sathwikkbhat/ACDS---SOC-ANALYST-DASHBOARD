@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-
-const API = `http://${window.location.hostname}:8000`;
+import { API_BASE as API } from '../api';
 const ARCHIVE_KEY = 'acds_archive_store';
 
 // ── Persistent archive helpers ────────────────────────────────────────────────

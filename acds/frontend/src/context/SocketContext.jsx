@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import axios from 'axios';
+import { API_BASE, WS_BASE } from '../api';
 
 const SocketContext = createContext();
 
@@ -16,7 +17,7 @@ export const SocketProvider = ({ children }) => {
     const statInterval = setInterval(fetchStats, 3000);
 
     // WebSocket connect
-    const socket = new WebSocket(`ws://${window.location.hostname}:8000/ws/alerts`);
+    const socket = new WebSocket(`${WS_BASE}/ws/alerts`);
     
     socket.onopen = () => console.log("WebSocket Connected");
     
@@ -56,14 +57,14 @@ export const SocketProvider = ({ children }) => {
 
   const fetchStats = async () => {
     try {
-      const res = await axios.get(`http://${window.location.hostname}:8000/stats`);
+      const res = await axios.get(`${API_BASE}/stats`);
       setStats(res.data);
     } catch(e) {}
   };
 
   const resetSystem = async () => {
     try {
-      await axios.post(`http://${window.location.hostname}:8000/reset`);
+      await axios.post(`${API_BASE}/reset`);
       setAlerts([]);
       fetchStats();
       window.dispatchEvent(new CustomEvent('acds-reset'));

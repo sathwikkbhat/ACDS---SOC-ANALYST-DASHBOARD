@@ -3,10 +3,9 @@ import { useSocket } from '../context/SocketContext';
 import Globe from 'react-globe.gl';
 import { Bar } from 'react-chartjs-2';
 import { Chart, registerables } from 'chart.js';
+import { API_BASE as API } from '../api';
 
 Chart.register(...registerables);
-
-const API = `http://${window.location.hostname}:8000`;
 
 // ── Smooth animated counter ───────────────────────────────────────────────
 function useAnimatedCounter(target, duration = 400) {
@@ -101,8 +100,7 @@ async function fetchGeo(ip) {
   }
 
   try {
-    const backendUrl = `http://${window.location.hostname}:8000`;
-    const res = await fetch(`${backendUrl}/geo/${ip}`);
+    const res = await fetch(`${API}/geo/${ip}`);
     if (!res.ok) return null;
     const data = await res.json();
     if (data && data.lat !== null && data.lon !== null) {
@@ -706,7 +704,7 @@ function PlaybookSection({ alert }) {
   const generatePlaybook = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`http://${window.location.hostname}:8000/playbooks/generate/${alert.alert_id}`, { method: 'POST' });
+      const res = await fetch(`${API}/playbooks/generate/${alert.alert_id}`, { method: 'POST' });
       const data = await res.json();
       if (data.playbook) setLocalPlaybook(data.playbook);
     } catch (_) {}

@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { API_BASE as API } from '../api';
 
 export default function Settings() {
   const [whitelist, setWhitelist] = useState([]);
   const [settings, setSettings] = useState(null);
   
   useEffect(() => {
-    fetch(`http://${window.location.hostname}:8000/settings`)
+    fetch(`${API}/settings`)
       .then(res => res.json())
       .then(data => {
         if (data.admin_whitelist) setWhitelist(data.admin_whitelist);
@@ -18,7 +19,7 @@ export default function Settings() {
     const ip = prompt("Enter new whitelisted IP Address:");
     if (!ip) return;
     try {
-      const res = await fetch(`http://${window.location.hostname}:8000/settings/whitelist/add`, {
+      const res = await fetch(`${API}/settings/whitelist/add`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ip })
@@ -32,7 +33,7 @@ export default function Settings() {
 
   const removeIp = async (ip) => {
     try {
-      const res = await fetch(`http://${window.location.hostname}:8000/settings/whitelist/remove`, {
+      const res = await fetch(`${API}/settings/whitelist/remove`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ip })
@@ -54,7 +55,7 @@ export default function Settings() {
       gemini_rate_limit_sec: parseInt(document.getElementById('set_gem_rate').value),
     };
     try {
-      const res = await fetch(`http://${window.location.hostname}:8000/settings`, {
+      const res = await fetch(`${API}/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
