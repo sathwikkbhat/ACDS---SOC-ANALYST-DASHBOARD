@@ -7,7 +7,10 @@
 
 @layer base {
   body {
-    @apply bg-background text-secondary antialiased font-sans;
+    @apply bg-[#0A0C0E] text-[#e5e2e1] antialiased font-sans;
+    overflow: hidden;
+    margin: 0;
+    padding: 0;
   }
 }
 
@@ -25,3 +28,10 @@
   -webkit-font-feature-settings: 'liga';
   -webkit-font-smoothing: antialiased;
 }
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Leaflet Dark Styles Override */
+.leaflet-container { background: #000 !important; }
+.leaflet-layer { filter: grayscale(100%) invert(100%) contrast(150%) !important; }

@@ -1,0 +1,240 @@
+import React, { useState, useEffect } from 'react';
+
+export default function Settings() {
+  const [whitelist, setWhitelist] = useState([]);
+  const [settings, setSettings] = useState(null);
+  
+  useEffect(() => {
+    fetch(`http://${window.location.hostname}:8000/settings`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.admin_whitelist) setWhitelist(data.admin_whitelist);
+        setSettings(data);
+      })
+      .catch(err => console.error("Could not load settings", err));
+  }, []);
+
+  const addIp = async () => {
+    const ip = prompt("Enter new whitelisted IP Address:");
+    if (!ip) return;
+    try {
+      const res = await fetch(`http://${window.location.hostname}:8000/settings/whitelist/add`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ip })
+      });
+      const data = await res.json();
+      if (data.whitelist) setWhitelist(data.whitelist);
+    } catch (e) {
+      alert("Failed to add IP");
+    }
+  };
+
+  const removeIp = async (ip) => {
+    try {
+      const res = await fetch(`http://${window.location.hostname}:8000/settings/whitelist/remove`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ip })
+      });
+      const data = await res.json();
+      if (data.whitelist) setWhitelist(data.whitelist);
+    } catch (e) {
+      alert("Failed to remove IP");
+    }
+  };
+
+  const saveChanges = async () => {
+    const payload = {
+      brute_force_threshold: parseInt(document.getElementById('set_bf_thresh').value),
+      brute_force_window_sec: parseInt(document.getElementById('set_bf_win').value),
+      beacon_interval_variance: parseFloat(document.getElementById('set_bc_var').value),
+      exfil_threshold_bytes: parseInt(document.getElementById('set_ex_thresh').value),
+      correlation_window_sec: parseInt(document.getElementById('set_cor_win').value),
+      gemini_rate_limit_sec: parseInt(document.getElementById('set_gem_rate').value),
+    };
+    try {
+      const res = await fetch(`http://${window.location.hostname}:8000/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) alert("Settings saved dynamically to backend!");
+    } catch (e) {
+      alert("Failed to save settings");
+    }
+  };
+
+  if (!settings) return null;
+
+  return (
+    <div className="pt-8 pb-16 px-8 min-h-screen bg-[#0A0C0E] relative overflow-y-auto">
+      {/* Background Watermark */}
+      <div className="absolute top-1/4 left-1/4 opacity-[0.02] pointer-events-none select-none">
+        <span className="font-['Space_Grotesk'] font-black text-[20rem] leading-none text-[#e5e2e1]">ACDS</span>
+      </div>
+
+      {/* Page Header */}
+      <div className="flex items-baseline justify-between mb-10 mt-8 relative z-10">
+        <div>
+          <h2 className="font-['Space_Grotesk'] text-5xl font-black tracking-tight text-[#e5e2e1] mb-2">Settings</h2>
+          <div className="flex items-center gap-3">
+            <span className="font-['IBM_Plex_Mono'] text-xs text-[#5B8059] py-1 px-2 bg-[#A84B2B]/5 border border-[#A84B2B]/10">config.py</span>
+            <span className="h-[1px] w-12 bg-[#6B6560]/30"></span>
+            <p className="font-['IBM_Plex_Mono'] text-[10px] text-[#b9ccb2] tracking-widest uppercase">System Core Configuration</p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button className="px-6 py-2 bg-[#0A0C0E] border border-[#6B6560]/20 font-['IBM_Plex_Mono'] text-[10px] tracking-tighter text-[#e5e2e1] hover:bg-[#120b0a] transition-colors uppercase">RESET_DEFAULTS</button>
+          <button onClick={saveChanges} className="px-6 py-2 bg-[#A84B2B] text-[#1a2b1a] font-['IBM_Plex_Mono'] text-[10px] font-bold tracking-tighter hover:shadow-[0_0_15px_rgba(152, 251, 152, 0.3)] transition-all uppercase">SAVE_CHANGES</button>
+        </div>
+      </div>
+
+      {/* Settings Bento Grid */}
+      <div className="grid grid-cols-12 gap-6 relative z-10 mb-20 text-[#e5e2e1]">
+        
+        {/* Section 01: Detection Thresholds */}
+        <section className="col-span-12 lg:col-span-8 bg-[#0A0C0E] p-8 border border-[#6B6560]/10">
+          <div className="flex items-center justify-between mb-8">
+            <h3 className="font-['Space_Grotesk'] text-xl font-bold tracking-tight flex items-center gap-3 text-[#e5e2e1]">
+              <span className="w-1.5 h-6 bg-[#A84B2B]"></span>
+              SECTION_01 <span className="text-[#b9ccb2] font-medium">Detection Thresholds</span>
+            </h3>
+            <span className="font-['IBM_Plex_Mono'] text-[10px] text-[#6B6560]">v4.0.2-ALPHA</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8">
+            <div className="space-y-2">
+              <label className="block font-['IBM_Plex_Mono'] text-[10px] text-[#b9ccb2] tracking-widest uppercase">BRUTE_FORCE_THRESHOLD</label>
+              <div className="relative group">
+                <div className="absolute left-0 top-0 w-1 h-full bg-[#A84B2B] scale-y-0 group-focus-within:scale-y-100 transition-transform"></div>
+                <input id="set_bf_thresh" className="w-full bg-[#080808] border-none py-3 px-4 font-['IBM_Plex_Mono'] text-[#A84B2B] focus:ring-0 outline-none" type="number" defaultValue={settings.brute_force_threshold} />
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-['IBM_Plex_Mono'] text-[#6B6560]/50 uppercase">attempts</span>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="block font-['IBM_Plex_Mono'] text-[10px] text-[#b9ccb2] tracking-widest uppercase">BRUTE_FORCE_WINDOW_SEC</label>
+              <div className="relative group">
+                <div className="absolute left-0 top-0 w-1 h-full bg-[#A84B2B] scale-y-0 group-focus-within:scale-y-100 transition-transform"></div>
+                <input id="set_bf_win" className="w-full bg-[#080808] border-none py-3 px-4 font-['IBM_Plex_Mono'] text-[#A84B2B] focus:ring-0 outline-none" type="number" defaultValue={settings.brute_force_window_sec} />
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-['IBM_Plex_Mono'] text-[#6B6560]/50 uppercase">seconds</span>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="block font-['IBM_Plex_Mono'] text-[10px] text-[#b9ccb2] tracking-widest uppercase">BEACON_INTERVAL_VARIANCE</label>
+              <div className="relative group">
+                <div className="absolute left-0 top-0 w-1 h-full bg-[#A84B2B] scale-y-0 group-focus-within:scale-y-100 transition-transform"></div>
+                <input id="set_bc_var" className="w-full bg-[#080808] border-none py-3 px-4 font-['IBM_Plex_Mono'] text-[#A84B2B] focus:ring-0 outline-none" type="text" defaultValue={settings.beacon_interval_variance} />
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-['IBM_Plex_Mono'] text-[#6B6560]/50 uppercase">float</span>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="block font-['IBM_Plex_Mono'] text-[10px] text-[#b9ccb2] tracking-widest uppercase">EXFIL_THRESHOLD_BYTES</label>
+              <div className="relative group">
+                <div className="absolute left-0 top-0 w-1 h-full bg-[#A84B2B] scale-y-0 group-focus-within:scale-y-100 transition-transform"></div>
+                <input id="set_ex_thresh" className="w-full bg-[#080808] border-none py-3 px-4 font-['IBM_Plex_Mono'] text-[#A84B2B] focus:ring-0 outline-none" type="number" defaultValue={settings.exfil_threshold_bytes} />
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-['IBM_Plex_Mono'] text-[#6B6560]/50 uppercase">bytes</span>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="block font-['IBM_Plex_Mono'] text-[10px] text-[#b9ccb2] tracking-widest uppercase">CORRELATION_WINDOW_SEC</label>
+              <div className="relative group">
+                <div className="absolute left-0 top-0 w-1 h-full bg-[#A84B2B] scale-y-0 group-focus-within:scale-y-100 transition-transform"></div>
+                <input id="set_cor_win" className="w-full bg-[#080808] border-none py-3 px-4 font-['IBM_Plex_Mono'] text-[#A84B2B] focus:ring-0 outline-none" type="number" defaultValue={settings.correlation_window_sec} />
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-['IBM_Plex_Mono'] text-[#6B6560]/50 uppercase">seconds</span>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="block font-['IBM_Plex_Mono'] text-[10px] text-[#b9ccb2] tracking-widest uppercase">GEMINI_RATE_LIMIT_SEC</label>
+              <div className="relative group">
+                <div className="absolute left-0 top-0 w-1 h-full bg-[#A84B2B] scale-y-0 group-focus-within:scale-y-100 transition-transform"></div>
+                <input id="set_gem_rate" className="w-full bg-[#080808] border-none py-3 px-4 font-['IBM_Plex_Mono'] text-[#A84B2B] focus:ring-0 outline-none" type="number" defaultValue={settings.gemini_rate_limit_sec} />
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-['IBM_Plex_Mono'] text-[#6B6560]/50 uppercase">requests</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Section 03: API & Input Mode */}
+        <section className="col-span-12 lg:col-span-4 bg-[#0A0C0E] p-8 border border-[#6B6560]/10 flex flex-col">
+          <div className="mb-8">
+            <h3 className="font-['Space_Grotesk'] text-xl font-bold tracking-tight flex items-center gap-3 text-[#e5e2e1]">
+              <span className="w-1.5 h-6 bg-[#A84B2B]"></span>
+              SECTION_03 <span className="text-[#b9ccb2] font-medium">API &amp; Mode</span>
+            </h3>
+          </div>
+          {/* Gemini API Key only */}
+          <div className="space-y-2">
+            <label className="block font-['IBM_Plex_Mono'] text-[10px] text-[#b9ccb2] tracking-widest uppercase">GEMINI_API_KEY</label>
+            <div className="relative group">
+              <input className="w-full bg-[#080808] border-none py-3 px-4 font-['IBM_Plex_Mono'] text-[#A84B2B] focus:ring-0 outline-none pr-12" type="password" defaultValue="AIzaSyB3X_589X-Yp7ZlQ9m2k0j1h4g3f2e1d" />
+              <button className="absolute right-4 top-1/2 -translate-y-1/2 text-[#6B6560] hover:text-[#A84B2B] transition-colors">
+                <span className="material-symbols-outlined text-lg" style={{ verticalAlign: 'middle', fontVariationSettings: "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24" }}>visibility</span>
+              </button>
+            </div>
+            <p className="font-['IBM_Plex_Mono'] text-[10px] text-[#6B6560]/60 mt-2">Used for AI Playbook generation on Critical threats.</p>
+          </div>
+        </section>
+
+        {/* Section 02: Admin Whitelist */}
+        <section className="col-span-12 lg:col-span-8 bg-[#0A0C0E] p-8 border border-[#6B6560]/10">
+          <div className="flex items-center justify-between mb-8">
+            <h3 className="font-['Space_Grotesk'] text-xl font-bold tracking-tight flex items-center gap-3 text-[#e5e2e1]">
+              <span className="w-1.5 h-6 bg-[#A84B2B]"></span>
+              SECTION_02 <span className="text-[#b9ccb2] font-medium">Admin Whitelist</span>
+            </h3>
+            <div className="flex items-center gap-2 px-3 py-1 bg-[#120b0a] border border-[#6B6560]/10">
+              <span className="material-symbols-outlined text-xs text-[#A84B2B]" style={{ verticalAlign: 'middle' }}>verified_user</span>
+              <span className="font-['IBM_Plex_Mono'] text-[10px] text-[#b9ccb2] uppercase">Currently {whitelist.length} whitelisted hosts active</span>
+            </div>
+          </div>
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-3">
+              {whitelist.map((ip) => (
+                <div key={ip} className="bg-[#080808] border border-[#A84B2B]/20 px-4 py-2 flex items-center gap-4 group">
+                  <span className="font-['IBM_Plex_Mono'] text-sm text-[#A84B2B]">{ip}</span>
+                  <button onClick={() => removeIp(ip)} className="text-[#6B6560] hover:text-[#ffb4ab] transition-colors">
+                    <span className="material-symbols-outlined text-sm" style={{ verticalAlign: 'middle' }}>close</span>
+                  </button>
+                </div>
+              ))}
+              <button onClick={addIp} className="bg-[#120b0a] border border-[#6B6560]/20 px-4 py-2 font-['IBM_Plex_Mono'] text-[10px] tracking-widest uppercase text-[#e5e2e1] hover:bg-[#A84B2B] hover:text-black transition-all flex items-center gap-2">
+                <span className="material-symbols-outlined text-sm" style={{ verticalAlign: 'middle' }}>add</span>
+                ADD IP ADDRESS
+              </button>
+            </div>
+            <p className="font-['Inter'] text-[10px] text-[#6B6560]/60 mt-4 italic leading-relaxed">
+              Note: Whitelisted hosts are exempt from behavioral analysis and threshold-based locking. Use with extreme caution as this bypasses the ACDS neural engine filters.
+            </p>
+          </div>
+        </section>
+
+        {/* Critical Notice Section */}
+        <section className="col-span-12 lg:col-span-4 bg-[#93000a]/10 border border-[#ffb4ab]/20 p-8 relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-4 opacity-10">
+            <span className="material-symbols-outlined text-7xl text-[#ffb4ab]" style={{ verticalAlign: 'middle' }}>warning</span>
+          </div>
+          <h3 className="font-['Space_Grotesk'] text-xl font-black text-[#ffb4ab] mb-4 flex items-center gap-3 uppercase italic">
+            Critical Notice
+          </h3>
+          <div className="space-y-4 relative z-10 text-[#e5e2e1]">
+            <p className="font-['IBM_Plex_Mono'] text-xs leading-relaxed">
+              Unauthorized modification of threshold values may lead to false negatives or system instability.
+            </p>
+            <div className="h-[1px] w-full bg-[#ffb4ab]/20"></div>
+            <ul className="space-y-3">
+              <li className="flex items-start gap-3">
+                <span className="material-symbols-outlined text-[#ffb4ab] text-sm mt-0.5" style={{ verticalAlign: 'middle' }}>chevron_right</span>
+                <span className="font-['Inter'] text-[10px] uppercase tracking-wider text-[#ffb4ab]/80 font-bold">Log all changes to ACDS_SEC_AUDIT</span>
+              </li>
+              <li className="flex items-start gap-3">
+                <span className="material-symbols-outlined text-[#ffb4ab] text-sm mt-0.5" style={{ verticalAlign: 'middle' }}>chevron_right</span>
+                <span className="font-['Inter'] text-[10px] uppercase tracking-wider text-[#ffb4ab]/80 font-bold">Require Level 4 Clearance for Exfil resets</span>
+              </li>
+            </ul>
+          </div>
+        </section>
+      </div>
+
+    </div>
+  );
+}
