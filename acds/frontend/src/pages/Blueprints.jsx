@@ -214,6 +214,23 @@ export default function Blueprints() {
   const globeRef = useRef(null);
   const prevAlertCount = useRef(0);
 
+  const [globeWidth, setGlobeWidth] = useState(300);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const container = document.getElementById('globe-container');
+      if (container) {
+        setGlobeWidth(container.clientWidth);
+      }
+    };
+    const timer = setTimeout(handleResize, 100);
+    window.addEventListener('resize', handleResize);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
+
   // ── Clear all local state on system reset ───────────────────────
   useEffect(() => {
     const handleReset = () => {
@@ -394,8 +411,8 @@ export default function Blueprints() {
 
       <div className="relative z-10">
         {/* ── Header Row ── */}
-        <div className="flex justify-between items-start mb-8 gap-6">
-          <div className="flex gap-3 flex-wrap">
+        <div className="flex flex-col lg:flex-row justify-between items-start mb-8 gap-6">
+          <div className="flex gap-3 flex-wrap w-full lg:w-auto">
             {/* Reset Button */}
             <button
               id="blueprints-reset-btn"
@@ -478,7 +495,7 @@ export default function Blueprints() {
           </div>
 
           {/* KPI Strip */}
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full lg:w-auto">
             <div className="bg-[#0A0C0E] p-4 border-l-2 border-[#6B6560]/20">
               <p className="font-['IBM_Plex_Mono'] text-[10px] text-[#6B6560] uppercase tracking-widest mb-1">TOTAL EVENTS</p>
               <h3 className="text-2xl font-['Space_Grotesk'] font-black text-[#e5e2e1]">{animTotal}</h3>
@@ -703,7 +720,7 @@ export default function Blueprints() {
           {/* Right: Globe + Chart */}
           <div className="col-span-12 lg:col-span-3 space-y-6 mt-8">
             {/* Animated Globe */}
-            <div className="bg-gradient-to-b from-[#0a0a0a] to-[#131514] border border-[#120b0a] shadow-lg overflow-hidden relative rounded-xl" style={{ height: '360px' }}>
+            <div id="globe-container" className="bg-gradient-to-b from-[#0a0a0a] to-[#131514] border border-[#120b0a] shadow-lg overflow-hidden relative rounded-xl" style={{ height: '360px' }}>
               <div className="p-4 bg-gradient-to-b from-[#111111]/90 to-transparent absolute top-0 left-0 w-full z-10 pointer-events-none">
                 <p className="font-['Space_Grotesk'] font-bold text-[11px] uppercase tracking-widest text-[#e5e2e1] drop-shadow-md">
                   Threat Origin Globe
@@ -716,8 +733,8 @@ export default function Blueprints() {
               <div className="flex items-center justify-center w-full h-full cursor-grab active:cursor-grabbing">
                 <Globe
                   ref={globeRef}
-                  width={400}
-                  height={400}
+                  width={globeWidth}
+                  height={360}
                   backgroundColor="rgba(0,0,0,0)"
                   globeImageUrl="https://unpkg.com/three-globe/example/img/earth-night.jpg"
                   bumpImageUrl="https://unpkg.com/three-globe/example/img/earth-topology.png"
