@@ -6,6 +6,23 @@ import { Chart, registerables } from 'chart.js';
 import { API_BASE as API } from '../api';
 import { generateClientPlaybook } from '../syntheticEngine';
 
+// Returns contextual action text based on alert type
+function getPreventiveAction(alert) {
+  if (!alert) return 'ROTATE KEYS';
+  const t = (alert.type || '').toLowerCase();
+  if (t.includes('brute') || t.includes('ssh') || t.includes('login'))
+    return `BLOCK IP: ${alert.src_ip || 'ATTACKER'}`;
+  if (t.includes('c2') || t.includes('beacon') || t.includes('command'))
+    return 'ISOLATE HOST & KILL PROCESS';
+  if (t.includes('exfil') || t.includes('data') || t.includes('transfer'))
+    return 'ROTATE CREDENTIALS & REVOKE TOKENS';
+  if (t.includes('scan') || t.includes('recon'))
+    return 'ENABLE DECEPTION LAYER';
+  if (alert.correlated)
+    return 'MULTI-VECTOR: ESCALATE TO SOC TEAM';
+  return 'QUARANTINE & INVESTIGATE';
+}
+
 Chart.register(...registerables);
 
 // ── Smooth animated counter ───────────────────────────────────────────────
@@ -149,8 +166,37 @@ async function fetchGeo(ip) {
   return geo;
 }
 
+// Execute button with ripple feedback
+function ExecuteButton() {
+  const [executed, setExecuted] = useState(false);
+  const handleClick = () => {
+    if (executed) return;
+    setExecuted(true);
+    setTimeout(() => setExecuted(false), 2000);
+  };
+  return (
+    <button
+      onClick={handleClick}
+      className={`relative flex-none px-8 font-['Space_Grotesk'] font-black text-xs uppercase overflow-hidden transition-all duration-300 ${
+        executed
+          ? 'bg-[#5B8059] text-[#fff]'
+          : 'bg-[#A84B2B] text-[#2f4d2f] hover:bg-[#E8E2D9]'
+      }`}
+    >
+      {executed ? (
+        <span className="flex items-center gap-2">
+          <span className="material-symbols-outlined text-sm" style={{ verticalAlign: 'middle' }}>check_circle</span>
+          ENACTED
+        </span>
+      ) : (
+        'EXECUTE'
+      )}
+    </button>
+  );
+}
+
 export default function Blueprints() {
-  const { alerts, stats, resetSystem, backendOnline, startSynthetic, stopSynthetic, syntheticMode: ctxSynMode } = useSocket();
+  const { alerts, stats, resetSystem, backendOnline, startSynthetic, stopSynthetic, syntheticMode: ctxSynMode, syntheticLoading } = useSocket();
 
   // Animated KPI counters
   const animTotal    = useAnimatedCounter(stats.total        ?? 0);
@@ -259,12 +305,12 @@ export default function Blueprints() {
       resetSystem();
       return;
     }
-    setTransitionMsg('Initializing High-Speed Data Stream...');
+    setTransitionMsg('Initializing Synthetic Data Stream...');
     setLiveModeActive(false);
     // Stop any backend monitor
     if (backendOnline) fetch(`${API}/monitor/stop`, { method: 'POST' }).catch(() => {});
     setTimeout(() => {
-      startSynthetic();  // generates 5000 alerts in-browser
+      startSynthetic();
       setTransitionMsg(null);
     }, 800);
   };
@@ -376,14 +422,21 @@ export default function Blueprints() {
 
               <button
                 onClick={setLiveMode}
+                disabled={!backendOnline && !liveModeActive}
+                title={!backendOnline ? 'Live Analysis requires backend connection' : ''}
                 className={`flex items-center gap-2 px-4 py-2 text-xs font-['IBM_Plex_Mono'] uppercase tracking-widest transition-all border ${
                   analysisMode === 'live'
                     ? 'bg-[#5B8059]/20 border-[#5B8059] text-[#5B8059]'
+                    : !backendOnline
+                    ? 'bg-[#120b0a] border-[#6B6560]/10 text-[#6B6560]/30 cursor-not-allowed'
                     : 'bg-[#120b0a] border-[#6B6560]/30 text-[#6B6560] hover:border-[#5B8059]/40 hover:text-[#e5e2e1]'
                 }`}
               >
-                <span className={`w-2 h-2 rounded-full ${analysisMode === 'live' ? 'bg-[#5B8059] animate-pulse' : 'bg-[#6B6560]/50'}`} />
+                <span className={`w-2 h-2 rounded-full ${analysisMode === 'live' ? 'bg-[#5B8059] animate-pulse' : !backendOnline ? 'bg-[#6B6560]/20' : 'bg-[#6B6560]/50'}`} />
                 Live Analysis
+                {!backendOnline && analysisMode !== 'live' && (
+                  <span className="text-[8px] ml-1 opacity-50">(offline)</span>
+                )}
               </button>
             </div>
 
@@ -455,27 +508,43 @@ export default function Blueprints() {
         {/* ── Status Banner ── */}
         <div className="mb-8">
           <div className={`p-4 border flex items-center gap-4 font-['IBM_Plex_Mono'] text-xs uppercase tracking-widest transition-all ${
-            transitionMsg 
-              ? 'border-[#6B6560]/50 text-[#e5e2e1] bg-[#120b0a]' 
-              : analysisMode === 'synthetic' 
-                ? 'border-[#A84B2B]/40 text-[#A84B2B] bg-[#A84B2B]/10' 
+            transitionMsg
+              ? 'border-[#6B6560]/50 text-[#e5e2e1] bg-[#120b0a]'
+              : syntheticLoading
+              ? 'border-[#A84B2B]/40 text-[#A84B2B] bg-[#A84B2B]/10'
+              : analysisMode === 'synthetic'
+                ? 'border-[#A84B2B]/40 text-[#A84B2B] bg-[#A84B2B]/10'
                 : analysisMode === 'live'
                   ? 'border-[#5B8059]/40 text-[#5B8059] bg-[#5B8059]/10'
                   : 'border-[#6B6560]/20 text-[#6B6560] bg-[#120b0a]'
           }`}>
             {transitionMsg ? (
               <><span className="material-symbols-outlined animate-spin" style={{ fontSize: '18px' }}>sync</span> {transitionMsg}</>
+            ) : syntheticLoading ? (
+              <div className="flex-1">
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#A84B2B] animate-pulse" />
+                  LOADING SYNTHETIC STREAM — {alerts.length} EVENTS INGESTED
+                </div>
+                <div className="w-full h-[2px] bg-[#A84B2B]/20 overflow-hidden">
+                  <div
+                    className="h-full bg-[#A84B2B] transition-all duration-150"
+                    style={{ width: `${Math.min(100, (alerts.length / 200) * 100)}%` }}
+                  />
+                </div>
+              </div>
             ) : analysisMode === 'synthetic' ? (
-              <><span className="w-2.5 h-2.5 rounded-full bg-[#A84B2B] animate-pulse"></span> SYNTHETIC ANALYSIS MODE ACTIVE</>
+              <><span className="w-2.5 h-2.5 rounded-full bg-[#A84B2B] animate-pulse" /> SYNTHETIC ANALYSIS MODE ACTIVE — {alerts.length} EVENTS LOADED</>
             ) : analysisMode === 'live' ? (
-              <><span className="w-2.5 h-2.5 rounded-full bg-[#5B8059] animate-pulse"></span> LIVE ANALYSIS MODE ACTIVE • Receiving real logs from Filebeat on Windows 11</>
+              <><span className="w-2.5 h-2.5 rounded-full bg-[#5B8059] animate-pulse" /> LIVE ANALYSIS MODE ACTIVE • Receiving real logs from Filebeat on Windows 11</>
             ) : (
-              <><span className="w-2.5 h-2.5 rounded-full bg-[#6B6560]"></span> SYSTEM STANDBY • Select an Analysis Mode to begin scanning</>
+              <><span className="w-2.5 h-2.5 rounded-full bg-[#6B6560]" /> SYSTEM STANDBY • Select an Analysis Mode to begin scanning</>
             )}
           </div>
         </div>
 
         {/* ── Main Grid ── */}
+
         <div className="grid grid-cols-12 gap-6 pb-8">
 
           {/* Left: Alert Feed + Engine Status */}
@@ -591,12 +660,13 @@ export default function Blueprints() {
                   </div>
 
                   <div className="flex gap-3 p-6 pt-0 mt-auto">
-                    <button className="flex-1 bg-[#353534] border border-[#A84B2B]/30 text-[#A84B2B] font-['Space_Grotesk'] font-bold text-[10px] uppercase py-3 hover:bg-[#A84B2B]/10 transition-all">
-                      PREVENTIVE ACTION: ROTATE KEYS
+                    <button className="flex-1 bg-[#353534] border border-[#A84B2B]/30 text-[#A84B2B] font-['Space_Grotesk'] font-bold text-[10px] uppercase py-3 hover:bg-[#A84B2B]/10 transition-all text-left px-4">
+                      <span className="text-[#6B6560] text-[8px] block mb-0.5 font-['IBM_Plex_Mono']">
+                        PREVENTIVE ACTION
+                      </span>
+                      {getPreventiveAction(activeAlert)}
                     </button>
-                    <button className="flex-none bg-[#A84B2B] text-[#2f4d2f] px-8 font-['Space_Grotesk'] font-black text-xs uppercase hover:bg-[#E8E2D9] transition-all">
-                      EXECUTE
-                    </button>
+                    <ExecuteButton />
                   </div>
                 </>
               ) : (
@@ -721,23 +791,29 @@ export default function Blueprints() {
   );
 }
 
-// ── Playbook sub-component ──────────────────────────────────────────────────
+// ── Playbook sub-component (no validation gate — generate on demand) ─────────
 function PlaybookSection({ alert }) {
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading]           = useState(false);
   const [localPlaybook, setLocalPlaybook] = useState(alert.playbook || '');
-  const [validation, setValidation] = useState(alert.validation || null);
+  const [playbookSource, setPlaybookSource] = useState(null); // 'gemini' | 'rule_based' | 'cached'
+  const [quota, setQuota]               = useState(null); // { remaining, cap, used, api_configured }
 
+  // Sync when switching to a different alert
   useEffect(() => {
     setLocalPlaybook(alert.playbook || '');
-    setValidation(alert.validation || null);
-  }, [alert.alert_id, alert.playbook, alert.validation]);
+    setPlaybookSource(null);
+  }, [alert.alert_id]);
 
-  const handleValidate = (type) => {
-    alert.validation = type;
-    setValidation(type);
-  };
+  // Fetch quota on mount so user can see remaining calls
+  useEffect(() => {
+    fetch(`${API}/playbooks/quota`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setQuota(d); })
+      .catch(() => {});
+  }, [localPlaybook]); // refresh after each generation
 
   const generatePlaybook = async () => {
+    if (loading) return;
     setLoading(true);
     try {
       const res = await fetch(`${API}/playbooks/generate/${alert.alert_id}`, { method: 'POST' });
@@ -746,110 +822,119 @@ function PlaybookSection({ alert }) {
         if (data.playbook) {
           setLocalPlaybook(data.playbook);
           alert.playbook = data.playbook;
+          setPlaybookSource(data.source);
+          if (data.calls_remaining !== undefined) {
+            setQuota(q => q ? { ...q, remaining: data.calls_remaining } : null);
+          }
           setLoading(false);
           return;
         }
       }
     } catch (_) {}
 
-    // Fallback
-    await new Promise(r => setTimeout(r, 800));
+    // Offline fallback — use client-side rule-based playbook
+    await new Promise(r => setTimeout(r, 600));
     const mockPlaybook = generateClientPlaybook(alert);
     setLocalPlaybook(mockPlaybook);
     alert.playbook = mockPlaybook;
+    setPlaybookSource('rule_based');
     setLoading(false);
   };
 
   return (
-    <div className="space-y-4">
-      {/* Validation Row */}
-      <div className="bg-[#120b0a] p-3 border border-[#A84B2B]/10 flex items-center justify-between">
-        <div>
-          <span className="font-['IBM_Plex_Mono'] text-[9px] text-[#6B6560] uppercase">THREAT VALIDATION</span>
-          <p className="font-['Space_Grotesk'] text-xs font-bold uppercase tracking-wider text-[#e5e2e1]">
-            Is this alert genuine?
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => handleValidate('genuine')}
-            className={`text-[9px] font-['IBM_Plex_Mono'] uppercase px-3 py-1 border transition-all ${
-              validation === 'genuine'
-                ? 'bg-[#5B8059]/20 border-[#5B8059] text-[#5B8059]'
-                : 'bg-[#120b0a] border-[#6B6560]/30 text-[#6B6560] hover:border-[#5B8059]/40 hover:text-[#e5e2e1]'
-            }`}
-          >
-            ✓ Genuine & Authentic
-          </button>
-          <button
-            onClick={() => handleValidate('false_positive')}
-            className={`text-[9px] font-['IBM_Plex_Mono'] uppercase px-3 py-1 border transition-all ${
-              validation === 'false_positive'
-                ? 'bg-[#ffb4ab]/20 border-[#ffb4ab] text-[#ffb4ab]'
-                : 'bg-[#120b0a] border-[#6B6560]/30 text-[#6B6560] hover:border-[#ffb4ab]/40 hover:text-[#e5e2e1]'
-            }`}
-          >
-            ✗ False Positive
-          </button>
+    <div className="space-y-3">
+      {/* Header row */}
+      <div className="flex justify-between items-center">
+        <p className="font-['Space_Grotesk'] font-bold text-[10px] uppercase tracking-widest text-[#A84B2B] flex items-center gap-2">
+          <span className="material-symbols-outlined text-sm" style={{ verticalAlign: 'middle' }}>smart_toy</span>
+          AI Response Playbook
+        </p>
+        <div className="flex items-center gap-2">
+          {/* Quota badge */}
+          {quota && (
+            <span
+              className={`font-['IBM_Plex_Mono'] text-[8px] uppercase tracking-widest px-2 py-0.5 border ${
+                quota.remaining > 3
+                  ? 'text-[#5B8059] border-[#5B8059]/30 bg-[#5B8059]/10'
+                  : quota.remaining > 0
+                  ? 'text-[#fbbf24] border-[#fbbf24]/30 bg-[#fbbf24]/10'
+                  : 'text-[#6B6560] border-[#6B6560]/20'
+              }`}
+            >
+              {quota.api_configured
+                ? `${quota.remaining}/${quota.cap} GEMINI CALLS LEFT`
+                : 'OFFLINE MODE'}
+            </span>
+          )}
+
+          {/* Source badge once generated */}
+          {playbookSource && (
+            <span className={`font-['IBM_Plex_Mono'] text-[8px] uppercase px-2 py-0.5 ${
+              playbookSource === 'gemini' ? 'text-[#A84B2B] bg-[#A84B2B]/10' : 'text-[#6B6560] bg-[#353534]'
+            }`}>
+              {playbookSource === 'gemini' ? '⚡ Gemini AI' : '📋 Rule-Based'}
+            </span>
+          )}
+
+          {/* Generate / Regenerate button */}
+          {!localPlaybook ? (
+            <button
+              id="generate-playbook-btn"
+              onClick={generatePlaybook}
+              disabled={loading}
+              className="text-[9px] font-['IBM_Plex_Mono'] uppercase bg-[#A84B2B]/10 text-[#A84B2B] px-3 py-1 border border-[#A84B2B]/30 hover:bg-[#A84B2B]/20 disabled:opacity-50 transition-all flex items-center gap-1.5"
+            >
+              {loading
+                ? <><span className="material-symbols-outlined text-xs animate-spin" style={{ verticalAlign: 'middle' }}>sync</span> Generating...</>
+                : <><span className="material-symbols-outlined text-xs" style={{ verticalAlign: 'middle' }}>auto_awesome</span> Generate</>}
+            </button>
+          ) : (
+            <button
+              onClick={() => { setLocalPlaybook(''); alert.playbook = null; setPlaybookSource(null); }}
+              className="text-[9px] font-['IBM_Plex_Mono'] uppercase text-[#6B6560] hover:text-[#A84B2B] transition-colors"
+            >
+              ↺ Regenerate
+            </button>
+          )}
         </div>
       </div>
 
-      {validation === 'genuine' && (
-        <div className="space-y-2">
-          <div className="flex justify-between items-center">
-            <p className="font-['Space_Grotesk'] font-bold text-[10px] uppercase tracking-widest text-[#A84B2B]">
-              AI Response Playbook
+      {/* Playbook content */}
+      <div className="bg-[#120b0a]/50 p-4 border border-[#A84B2B]/10 min-h-[80px] max-h-64 overflow-y-auto no-scrollbar">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center gap-3 py-4">
+            <span className="material-symbols-outlined text-[#A84B2B] text-2xl animate-spin">sync</span>
+            <p className="font-['IBM_Plex_Mono'] text-[10px] text-[#6B6560] uppercase tracking-widest">
+              {quota?.api_configured && quota?.remaining > 0
+                ? 'Calling Gemini AI...'
+                : 'Generating rule-based playbook...'}
             </p>
-            <div className="flex items-center gap-2">
-              <span className="font-['IBM_Plex_Mono'] text-[9px] text-[#6B6560] uppercase">Gemini AI</span>
-              {alert.severity === 'Critical' ? (
-                !localPlaybook && (
-                  <button
-                    id="generate-playbook-btn"
-                    onClick={generatePlaybook}
-                    disabled={loading}
-                    className="text-[9px] font-['IBM_Plex_Mono'] uppercase bg-[#A84B2B]/10 text-[#A84B2B] px-2 py-0.5 border border-[#A84B2B]/30 hover:bg-[#A84B2B]/20 disabled:opacity-50 transition-all"
-                  >
-                    {loading ? 'Generating...' : 'Generate'}
-                  </button>
-                )
-              ) : (
-                <span className="text-[9px] font-['IBM_Plex_Mono'] text-[#A84B2B]/50">(Critical Only)</span>
-              )}
-            </div>
           </div>
-          <div className="bg-[#120b0a]/50 p-4 border border-[#A84B2B]/10 space-y-3 max-h-60 overflow-y-auto no-scrollbar">
-            {localPlaybook ? (
-              localPlaybook.split('\n').filter(s => s.trim()).map((step, idx) => (
-                <div key={idx} className="flex gap-4">
-                  <span className="font-['IBM_Plex_Mono'] text-[#A84B2B] text-[10px] shrink-0">{String(idx + 1).padStart(2, '0')}</span>
-                  <p className="font-['IBM_Plex_Mono'] text-xs text-[#e5e2e1]">{step}</p>
-                </div>
-              ))
-            ) : (
-              <p className="font-['IBM_Plex_Mono'] text-[11px] text-[#6B6560]">
-                {loading ? 'Calling Gemini AI...' : 'Click Generate to create an AI playbook for this threat.'}
-              </p>
-            )}
+        ) : localPlaybook ? (
+          <div className="space-y-1">
+            {localPlaybook.split('\n').filter(s => s.trim()).map((step, idx) => (
+              <div key={idx} className="flex gap-3">
+                <span className="font-['IBM_Plex_Mono'] text-[#A84B2B] text-[9px] shrink-0 mt-0.5">
+                  {/^\d\./.test(step.trim()) ? '' : '›'}
+                </span>
+                <p className={`font-['IBM_Plex_Mono'] text-[11px] leading-relaxed ${
+                  /^\d\./.test(step.trim())
+                    ? 'text-[#A84B2B] font-bold mt-2'
+                    : 'text-[#e5e2e1]/80'
+                }`}>{step}</p>
+              </div>
+            ))}
           </div>
-        </div>
-      )}
-
-      {validation === 'false_positive' && (
-        <div className="bg-[#ffb4ab]/5 p-4 border border-[#ffb4ab]/10 text-center">
-          <p className="font-['IBM_Plex_Mono'] text-xs text-[#ffb4ab]/80 uppercase">
-            No response playbook required for False Positive events.
-          </p>
-        </div>
-      )}
-
-      {validation === null && (
-        <div className="bg-[#120b0a]/30 p-4 border border-[#6B6560]/10 text-center">
-          <p className="font-['IBM_Plex_Mono'] text-xs text-[#6B6560] uppercase">
-            Validate threat classification to unlock Gemini Playbook.
-          </p>
-        </div>
-      )}
+        ) : (
+          <div className="flex flex-col items-center justify-center gap-2 py-4 opacity-60">
+            <span className="material-symbols-outlined text-[#6B6560] text-xl">auto_awesome</span>
+            <p className="font-['IBM_Plex_Mono'] text-[10px] text-[#6B6560] uppercase tracking-widest text-center">
+              Click Generate to create an AI playbook for this threat
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
+

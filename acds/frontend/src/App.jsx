@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { SocketProvider } from './context/SocketContext';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
@@ -9,6 +9,22 @@ import Threats from './pages/Threats';
 import Intelligence from './pages/Intelligence';
 import Archives from './pages/Archives';
 import Settings from './pages/Settings';
+
+// Animated page wrapper — mounts with a fade + slight upward slide
+function AnimatedPage({ children }) {
+  const location = useLocation();
+  return (
+    <div
+      key={location.pathname}
+      style={{
+        animation: 'pageEnter 0.22s cubic-bezier(0.22, 1, 0.36, 1) both',
+        minHeight: '100%',
+      }}
+    >
+      {children}
+    </div>
+  );
+}
 
 export default function App() {
   return (
@@ -21,15 +37,29 @@ export default function App() {
             <div className="flex-1 overflow-y-auto relative z-10">
               <Routes>
                 <Route path="/" element={<Navigate to="/blueprints" replace />} />
-                <Route path="/blueprints" element={<Blueprints />} />
-                <Route path="/threats" element={<Threats />} />
-                <Route path="/intelligence" element={<Intelligence />} />
-                <Route path="/archives" element={<Archives />} />
-                <Route path="/settings" element={<Settings />} />
+                <Route path="/blueprints" element={<AnimatedPage><Blueprints /></AnimatedPage>} />
+                <Route path="/threats" element={<AnimatedPage><Threats /></AnimatedPage>} />
+                <Route path="/intelligence" element={<AnimatedPage><Intelligence /></AnimatedPage>} />
+                <Route path="/archives" element={<AnimatedPage><Archives /></AnimatedPage>} />
+                <Route path="/settings" element={<AnimatedPage><Settings /></AnimatedPage>} />
               </Routes>
             </div>
           </div>
         </div>
+
+        {/* Page transition keyframe */}
+        <style>{`
+          @keyframes pageEnter {
+            from {
+              opacity: 0;
+              transform: translateY(8px);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0);
+            }
+          }
+        `}</style>
       </BrowserRouter>
     </SocketProvider>
   );

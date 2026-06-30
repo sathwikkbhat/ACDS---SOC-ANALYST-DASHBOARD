@@ -52,8 +52,20 @@ It combines a **FastAPI** backend with a **React** frontend to deliver a full se
 | 📂 **Log Archive** | Paginated archive of 5,000+ normalized security events with playbook filter |
 | ⚡ **WARP Replay Mode** | Replay 5,000 events at 500/sec speed to stress-test the dashboard |
 | 📤 **Log Upload / Filebeat Ingest** | Upload JSON/NDJSON logs or stream from Filebeat via HTTP |
-| ⚙️ **Settings Panel** | Tune detection thresholds, whitelist IPs, manage input modes live |
-| 🛡️ **Deploy Shield** | Toggle live log monitoring ON/OFF from the UI |
+| ⚙️ Settings Panel | Tune detection thresholds, whitelist IPs, manage input modes live |
+| 🛡️ Deploy Shield | Toggle live log monitoring ON/OFF from the UI |
+
+---
+
+## ⚡ Recent Updates & Fixes (Latest Version)
+
+We have polished the codebase to deliver a **perfect production-ready product** and solve several legacy bugs:
+- 🚀 **Organic Ingestion Rate**: Replaced fake instantaneous loading. Alerts now drip in at a realistic rate (~10-12 alerts/sec) with a calm live update interval (6-10s) instead of overwhelming the browser.
+- 📡 **Dynamic Feed Status Indicator**: The Topbar now dynamically displays the active system feed status (`LOADING SYNTHETIC`, `SYNTHETIC FEED`, `LIVE FEED ACTIVE`, or `SYSTEM STANDBY`) by listening directly to real-time provider state changes.
+- ⚙️ **Offline Fallback Settings**: Settings panel initialization now recovers gracefully when the backend is offline, falling back to local simulation configurations and mock admin whitelists without hanging on load screens.
+- 🔒 **Key Security Polish**: Removed fake hardcoded Gemini credentials in settings and replaced with clean, dynamically-masked configuration status checks.
+- 🎨 **Premium Page transitions**: Integrated slide-and-fade CSS page transition animations between tab routing for a fluid, stutter-free user experience.
+- 📂 **Workspace Cleanup**: Removed the redundant backup `frontend_existing` directory to keep the codebase neat and clean.
 
 ---
 

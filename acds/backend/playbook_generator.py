@@ -1,21 +1,33 @@
 import time
-import google.generativeai as genai
 import config
 
-genai.configure(api_key=config.GEMINI_API_KEY)
-_model = genai.GenerativeModel('gemini-2.0-flash')
-_last_gemini_call: float = 0.0
-# Track how many calls we've made this minute to prevent rate limit exhaustion
-_calls_this_session: int = 0
-MAX_SESSION_CALLS = 50  # hard cap per session for free tier safety
+# Lazily configure Gemini only if key is available
+_model = None
+
+def _get_model():
+    global _model
+    if _model is not None:
+        return _model
+    if not config.GEMINI_API_KEY:
+        return None
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=config.GEMINI_API_KEY)
+        _model = genai.GenerativeModel('gemini-2.0-flash')
+        return _model
+    except Exception as e:
+        print(f"[Gemini] Failed to initialize model: {e}")
+        return None
+
 
 def generate_playbook(alert: dict, attack_path: list) -> str:
     """
-    Generate an AI playbook ONLY for Critical severity alerts.
-    Enforces a minimum gap (GEMINI_RATE_LIMIT_SEC) between calls.
-    If rate limit would be exceeded, returns a rule-based fallback immediately (no sleep).
+    Generate an AI playbook using Gemini.
+    Returns the playbook text, or raises an exception that caller should handle.
     """
-    # Removed severity check so AI playbooks can be generated for any severity.
+    model = _get_model()
+    if not model:
+        raise RuntimeError("Gemini model unavailable — API key not configured or invalid")
 
     path_str = ' → '.join(f"{s['id']} ({s['name']})" for s in attack_path) or 'Unknown'
     geo = alert.get('metadata', {}).get('geolocation') or 'Unknown location'
@@ -51,25 +63,35 @@ d) [action 4]
 
 Be specific. Reference the actual IP address, attack type, and predicted next TTPs. Do NOT write generic advice."""
 
-    try:
-        response = _model.generate_content(prompt)
-        return response.text
-    except Exception as exc:
-        return _rule_based_playbook(alert, attack_path, reason=f"Gemini error: {exc}")
+    response = model.generate_content(prompt)
+    return response.text
 
 
 def _rule_based_playbook(alert: dict, attack_path: list, reason: str = "") -> str:
     """Deterministic fallback playbook — no API required."""
     path_str = ' → '.join(f"{s['id']} ({s['name']})" for s in attack_path) if attack_path else 'Not predicted'
-    src = alert.get('src_ip', 'unknown')
-    why = alert.get('why_flagged', '')
+    src  = alert.get('src_ip', 'unknown')
+    why  = alert.get('why_flagged', 'Suspicious activity detected')
+    typ  = alert.get('type', 'Threat')
+    sev  = alert.get('severity', 'High')
+    port = alert.get('port', 'unknown')
+    user = alert.get('user', 'unknown')
+
+    note = f"\n[Note: Rule-based playbook — {reason}]" if reason else ""
+
     return (
-        f"1. SUMMARY\n{why}. Immediate containment recommended for {src}.\n\n"
-        f"2. NEXT MOVES\nBased on predicted path: {path_str}. Attacker may escalate to lateral movement.\n\n"
+        f"1. SUMMARY\n"
+        f"{why}. {typ} incident ({sev} severity) from source {src} requires immediate containment.{note}\n\n"
+        f"2. NEXT MOVES\n"
+        f"Based on predicted path: {path_str}. Attacker may attempt lateral movement via port {port} "
+        f"using compromised account \"{user}\".\n\n"
         f"3. IMMEDIATE ACTIONS\n"
-        f"a) Block {src} at perimeter firewall\n"
-        f"b) Isolate affected endpoints from network segment\n"
-        f"c) Rotate all credentials exposed to this source IP\n"
-        f"d) Notify SOC lead and escalate to incident response team\n\n"
-        f"4. IOCs TO BLOCK\n{src}"
+        f"a) Block {src} at perimeter firewall and all edge devices immediately\n"
+        f"b) Isolate affected endpoints and revoke active sessions\n"
+        f"c) Rotate all credentials associated with account \"{user}\" and linked services\n"
+        f"d) Notify SOC lead, open incident ticket, and escalate to IR team\n\n"
+        f"4. IOCs TO BLOCK\n"
+        f"IP: {src}\n"
+        f"Port: {port}\n"
+        f"User: {user}"
     )

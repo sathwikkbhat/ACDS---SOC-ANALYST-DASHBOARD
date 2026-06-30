@@ -35,3 +35,22 @@
 /* Leaflet Dark Styles Override */
 .leaflet-container { background: #000 !important; }
 .leaflet-layer { filter: grayscale(100%) invert(100%) contrast(150%) !important; }
+
+/* Sidebar nav — snappy transitions, GPU-composited */
+aside nav a {
+  will-change: background-color, color;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Page transition — defined here so it can be used in App.jsx inline style */
+@keyframes pageEnter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+

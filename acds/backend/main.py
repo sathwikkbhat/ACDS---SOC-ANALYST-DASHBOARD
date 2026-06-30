@@ -747,6 +747,90 @@ def geo_lookup(ip: str):
     _geo_cache[ip] = result
     return result
 
+# ═══════════════════════════════════════════════════════════════════════════
+# PLAYBOOK GENERATION
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Per-session call tracking (resets on server restart)
+_gemini_session_calls: int = 0
+GEMINI_SESSION_CAP: int = 10   # max Gemini calls per backend session (protects quota)
+_last_gemini_ts: float = 0.0
+
+@app.get('/playbooks/quota')
+def get_playbook_quota():
+    """Return how many Gemini calls remain in this session."""
+    remaining = max(0, GEMINI_SESSION_CAP - _gemini_session_calls)
+    return {
+        'used': _gemini_session_calls,
+        'cap': GEMINI_SESSION_CAP,
+        'remaining': remaining,
+        'api_configured': bool(GEMINI_API_KEY),
+    }
+
+@app.post('/playbooks/generate/{alert_id}')
+async def generate_alert_playbook(alert_id: str):
+    """
+    Generate (or retrieve cached) an AI playbook for a specific alert.
+    - Only calls Gemini if the alert doesn't already have a playbook stored.
+    - Enforces per-session cap (GEMINI_SESSION_CAP) and min interval (config.GEMINI_RATE_LIMIT_SEC).
+    - Falls back to rule-based playbook when quota is hit or API is unavailable.
+    """
+    global _gemini_session_calls, _last_gemini_ts
+
+    # Find the alert in the store
+    alert = None
+    for a in reversed(alert_store):
+        if a.get('alert_id') == alert_id:
+            alert = a
+            break
+
+    if not alert:
+        # Synthetic alerts aren't in alert_store — return a synthetic playbook
+        # Build a minimal synthetic alert to pass to the generator
+        alert = {'alert_id': alert_id, 'type': 'Unknown', 'severity': 'High',
+                 'src_ip': 'Unknown', 'why_flagged': 'Synthetic alert (not in backend store).'}
+
+    # Return cached playbook if already generated
+    if alert.get('playbook'):
+        return {'playbook': alert['playbook'], 'source': 'cached'}
+
+    # Build attack path for prompt context
+    try:
+        attack_path = simulate_attack_path(alert)
+    except Exception:
+        attack_path = []
+
+    # ── Rate limiting & quota check ──────────────────────────────────
+    import time
+    now = time.time()
+    rate_ok = (now - _last_gemini_ts) >= config.GEMINI_RATE_LIMIT_SEC
+    quota_ok = _gemini_session_calls < GEMINI_SESSION_CAP
+    api_ok   = bool(GEMINI_API_KEY)
+
+    if api_ok and rate_ok and quota_ok:
+        try:
+            _last_gemini_ts = now
+            _gemini_session_calls += 1
+            playbook_text = generate_playbook(alert, attack_path)
+            alert['playbook'] = playbook_text
+            return {'playbook': playbook_text, 'source': 'gemini', 'calls_remaining': GEMINI_SESSION_CAP - _gemini_session_calls}
+        except Exception as exc:
+            # Gemini failed — fall through to rule-based
+            pass
+
+    # ── Fallback: rule-based playbook ────────────────────────────────
+    from playbook_generator import _rule_based_playbook
+    reason = 'quota_exceeded' if not quota_ok else ('rate_limited' if not rate_ok else 'api_unavailable')
+    playbook_text = _rule_based_playbook(alert, attack_path, reason=reason)
+    alert['playbook'] = playbook_text
+    return {
+        'playbook': playbook_text,
+        'source': 'rule_based',
+        'reason': reason,
+        'calls_remaining': max(0, GEMINI_SESSION_CAP - _gemini_session_calls),
+    }
+
+
 if __name__ == '__main__':
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=False)

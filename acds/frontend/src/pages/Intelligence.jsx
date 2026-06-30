@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSocket } from '../context/SocketContext';
 import { useNavigate } from 'react-router-dom';
 import { API_BASE as API } from '../api';
@@ -57,19 +57,40 @@ export default function Intelligence() {
     { chain: "System Monitoring Phase", label: "Nominal", color: "#6B6560" }
   ];
 
-  // Helper to generate a fake risk score based on status
-  const getRiskScore = (status) => {
-    if (status === 'Active Threat') return Math.floor(Math.random() * 15) + 85; // 85-99
-    if (status === 'Blocked') return Math.floor(Math.random() * 20) + 40;       // 40-59
-    return Math.floor(Math.random() * 30) + 10;                                 // 10-39
+  // Stable deterministic hash — avoids flickering scores on re-render
+  const hashStr = (str) => {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+    return Math.abs(h);
   };
 
+  // Memoize scores keyed by (value + status) so they never change unless the IOC itself changes
+  const iocScores = useMemo(() => {
+    const map = {};
+    iocs.forEach(ioc => {
+      const effectiveStatus = blockedIocs.has(ioc.value) ? 'Blocked' : ioc.status;
+      const seed = hashStr(ioc.value + effectiveStatus);
+      if (effectiveStatus === 'Active Threat') map[ioc.value] = 85 + (seed % 15);
+      else if (effectiveStatus === 'Blocked')  map[ioc.value] = 40 + (seed % 20);
+      else                                      map[ioc.value] = 10 + (seed % 30);
+    });
+    return map;
+  }, [iocs, blockedIocs]);
+
+  const getRiskScore = (iocValue) => iocScores[iocValue] ?? 0;
+
   const handleBlock = (iocValue) => {
-    // Record this IOC in the UI-local list so the polling doesn't overwrite it
     setBlockedIocs(prev => new Set(prev).add(iocValue));
     setToast({ message: `IP Blocked Successfully: ${iocValue}`, type: 'success' });
     setTimeout(() => setToast(null), 3000);
   };
+
+  const handleCopyIP = useCallback((ip) => {
+    navigator.clipboard.writeText(ip).then(() => {
+      setToast({ message: `Copied to clipboard: ${ip}`, type: 'info' });
+      setTimeout(() => setToast(null), 2000);
+    });
+  }, []);
 
   const handleInvestigate = () => {
     setToast({ message: `Forwarding Context... View in Blueprints ➔`, type: 'info' });
@@ -163,7 +184,9 @@ export default function Intelligence() {
                         </p>
                         {isActive && (
                           <div className="mt-2 flex justify-between items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                            <span className="font-['IBM_Plex_Mono'] text-[8px] text-[#6B6560]">Conf: {Math.floor(Math.random() * 10) + 90}%</span>
+                            <span className="font-['IBM_Plex_Mono'] text-[8px] text-[#6B6560]">
+                              Conf: {90 + (Math.abs(tech.id.split('').reduce((h, c) => ((h << 5) - h + c.charCodeAt(0)) | 0, 0)) % 10)}%
+                            </span>
                             <span className="font-['IBM_Plex_Mono'] text-[8px] text-[#A84B2B] uppercase hover:underline">View Alerts →</span>
                           </div>
                         )}
@@ -301,7 +324,7 @@ export default function Intelligence() {
               <tbody className="font-['IBM_Plex_Mono'] text-xs">
                 {iocs.length > 0 ? iocs.map((ioc, idx) => {
                   const effectiveStatus = blockedIocs.has(ioc.value) ? 'Blocked' : ioc.status;
-                  const score = getRiskScore(effectiveStatus);
+                  const score = getRiskScore(ioc.value);
                   const isThreat = effectiveStatus === 'Active Threat';
                   const isBlocked = effectiveStatus === 'Blocked';
                   return (
