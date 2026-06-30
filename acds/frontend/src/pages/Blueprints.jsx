@@ -290,7 +290,7 @@ export default function Blueprints() {
       return;
     }
     setTransitionMsg('Switching to Live Analysis...');
-    stopSynthetic();
+    resetSystem();
     if (backendOnline) fetch(`${API}/monitor/start`, { method: 'POST' }).catch(() => {});
     setTimeout(() => {
       setLiveModeActive(true);
@@ -422,21 +422,14 @@ export default function Blueprints() {
 
               <button
                 onClick={setLiveMode}
-                disabled={!backendOnline && !liveModeActive}
-                title={!backendOnline ? 'Live Analysis requires backend connection' : ''}
                 className={`flex items-center gap-2 px-4 py-2 text-xs font-['IBM_Plex_Mono'] uppercase tracking-widest transition-all border ${
                   analysisMode === 'live'
                     ? 'bg-[#5B8059]/20 border-[#5B8059] text-[#5B8059]'
-                    : !backendOnline
-                    ? 'bg-[#120b0a] border-[#6B6560]/10 text-[#6B6560]/30 cursor-not-allowed'
                     : 'bg-[#120b0a] border-[#6B6560]/30 text-[#6B6560] hover:border-[#5B8059]/40 hover:text-[#e5e2e1]'
                 }`}
               >
-                <span className={`w-2 h-2 rounded-full ${analysisMode === 'live' ? 'bg-[#5B8059] animate-pulse' : !backendOnline ? 'bg-[#6B6560]/20' : 'bg-[#6B6560]/50'}`} />
+                <span className={`w-2 h-2 rounded-full ${analysisMode === 'live' ? 'bg-[#5B8059] animate-pulse' : 'bg-[#6B6560]/50'}`} />
                 Live Analysis
-                {!backendOnline && analysisMode !== 'live' && (
-                  <span className="text-[8px] ml-1 opacity-50">(offline)</span>
-                )}
               </button>
             </div>
 
@@ -545,7 +538,36 @@ export default function Blueprints() {
 
         {/* ── Main Grid ── */}
 
-        <div className="grid grid-cols-12 gap-6 pb-8">
+        {analysisMode === 'live' && alerts.length === 0 ? (
+          <div className="bg-[#0A0C0E] border border-[#5B8059]/20 p-8 flex flex-col items-center justify-center text-center space-y-6 min-h-[450px]">
+            <div className="relative">
+              <div className="absolute inset-0 rounded-full bg-[#5B8059]/10 animate-ping" />
+              <div className="relative w-20 h-20 rounded-full border border-[#5B8059]/40 flex items-center justify-center bg-[#120b0a]">
+                <span className="material-symbols-outlined text-[#5B8059] text-4xl animate-pulse">shield</span>
+              </div>
+            </div>
+            <div className="space-y-2 max-w-md">
+              <h3 className="font-['Space_Grotesk'] text-xl font-bold uppercase tracking-wide text-[#5B8059]">
+                Live Shield Active
+              </h3>
+              <p className="font-['IBM_Plex_Mono'] text-xs text-[#e5e2e1]/80 leading-relaxed">
+                System is fully nominal. Real-time log monitoring is active, but no attacks or suspicious indicators have been detected on the local host.
+              </p>
+            </div>
+            <div className="flex gap-4 text-[10px] font-['IBM_Plex_Mono'] text-[#6B6560] uppercase tracking-wider">
+              <div className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#5B8059]" />
+                Endpoint: Localhost
+              </div>
+              <div>•</div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#5B8059]" />
+                Status: Listening
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-12 gap-6 pb-8">
 
           {/* Left: Alert Feed + Engine Status */}
           <div className="col-span-12 lg:col-span-4 space-y-6">
@@ -785,7 +807,8 @@ export default function Blueprints() {
               </div>
             </div>
           </div>
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
